@@ -203,45 +203,63 @@ st.markdown(CSS, unsafe_allow_html=True)
 
 # ---------- UI components ----------
 def ui_header():
-    """Header with left EY logo (eyLogo.png) and right motto (eyLogo2.png)."""
-    # Use images if present, otherwise fallback text blocks.
-    left_img = None
-    right_img = None
-    try:
-        left_img = open("eyLogo.png", "rb").read()
-    except Exception:
-        left_img = None
-    try:
-        right_img = open("eyLogo2.png", "rb").read()
-    except Exception:
-        right_img = None
+    """
+    Render the polished header:
+      - left: eyLogo.png (if present) else text fallback
+      - center: yellow banner title + subtitle
+      - right: eyLogo2.png (if present) else text fallback
+    This avoids trying to convert Streamlit images to bytes (no .image_to_bytes()).
+    """
+    left_img_bytes = None
+    right_img_bytes = None
 
-    # Build HTML layout for banner: left image, title, right image
-    left_html = f'<img src="data:image/png;base64,{st.image(left_img).image_to_bytes().decode()}" style="height:48px;">' if left_img else '<div class="ey-logo">EY</div>'
-    # The above is a clever attempt, but Streamlit doesn't provide image->base64 helper directly.
-    # Simpler: use st.image for left and right and custom html for center.
-    with st.container():
-        cols = st.columns([1, 8, 1])
-        with cols[0]:
-            if left_img:
-                st.image(left_img, width=72, use_column_width=False)
-            else:
-                st.markdown('<div class="ey-logo" style="background:#000;color:#FFD400;padding:8px;border-radius:6px;font-weight:900">EY</div>', unsafe_allow_html=True)
-        with cols[1]:
+    # Try to read image files; keep them as bytes for st.image()
+    try:
+        with open("eyLogo.png", "rb") as f:
+            left_img_bytes = f.read()
+    except Exception:
+        left_img_bytes = None
+
+    try:
+        with open("eyLogo2.png", "rb") as f:
+            right_img_bytes = f.read()
+    except Exception:
+        right_img_bytes = None
+
+    # Build container with 3 columns: left logo, center title, right motto/logo
+    cols = st.columns([1, 8, 1])
+    with cols[0]:
+        if left_img_bytes:
+            # width tuned to look good in the banner
+            st.image(left_img_bytes, width=72, use_column_width=False)
+        else:
+            # simple styled fallback block if image missing
             st.markdown(
-                """
-                <div style="display:flex;flex-direction:column;justify-content:center;">
-                    <div class="banner-title">Data Quality Assessment Tool</div>
-                    <div class="small-grey">Polished UI -- plug in your completeness function (cc.py / ccUpd.py)</div>
-                </div>
-                """,
-                unsafe_allow_html=True
+                '<div style="background:#000;color:#FFD400;padding:8px;border-radius:6px;font-weight:900;text-align:center">EY</div>',
+                unsafe_allow_html=True,
             )
-        with cols[2]:
-            if right_img:
-                st.image(right_img, width=120, use_column_width=False)
-            else:
-                st.markdown('<div style="color:#000;background:#FFD400;padding:6px 8px;border-radius:6px;font-weight:700;text-align:right">Integrity • Insight</div>', unsafe_allow_html=True)
+
+    with cols[1]:
+        # Center banner: title + small subtitle text (HTML so we can style the yellow banner look)
+        st.markdown(
+            """
+            <div style="background:#FFD400;padding:12px 16px;border-radius:6px;display:flex;flex-direction:column;justify-content:center;">
+              <div style="font-size:20px;font-weight:800;color:#000;margin-bottom:4px;">Data Quality Assessment Tool</div>
+              <div style="color:#222;font-size:13px;">Polished UI -- paste your completeness function into ccUpd.py or cc.py</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with cols[2]:
+        if right_img_bytes:
+            # slightly wider for motto image
+            st.image(right_img_bytes, width=120, use_column_width=False)
+        else:
+            st.markdown(
+                '<div style="color:#000;background:#FFD400;padding:6px 8px;border-radius:6px;font-weight:700;text-align:right">Integrity • Insight</div>',
+                unsafe_allow_html=True,
+            )
 
 def left_nav(selected: str) -> str:
     """Left vertical navigation simulated by a radio (we style visually)."""
