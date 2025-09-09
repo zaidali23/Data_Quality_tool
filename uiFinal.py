@@ -1,14 +1,8 @@
-# uif.py
 """
-Data Quality Assessment Tool UI (uif.py)
-
-Run:
-    streamlit run uif.py
-
 Notes:
-- This file expects optional modules cc_errorReport.py, cc.py, or ccUpd.py exporting
-  `run_completeness_check(df)` to be available. If none are present, a demo stub runs.
-- Place eyLogo.png and eyLogo2.png in the same folder to show logos in the header.
+** This code still needs cc_errorReport.py and cc.py 
+** Image eyLogo needs to be in the same folder as the code.
+
 """
 
 import io
@@ -16,12 +10,13 @@ import re
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt ##--------- for when we add visualisation
 from typing import List, Dict, Tuple
 
-# Try to import completeness implementations preferring cc_errorReport then cc then ccUpd
+# import completeness check implementations from cc_errorReport.py and cc.py
+
 completeness_available = False
-for modname in ("cc_errorReport", "cc", "ccUpd"):
+for modname in ("cc_errorReport", "cc"):
     try:
         mod = __import__(modname)
         run_completeness_check = getattr(mod, "run_completeness_check")
@@ -32,64 +27,37 @@ for modname in ("cc_errorReport", "cc", "ccUpd"):
         run_completeness_check = None
         completeness_source = None
 
-# FALLBACK STUB if completeness not available
-if not completeness_available:
-    def run_completeness_check(df: pd.DataFrame):
-        na_mask = df.isna() | df.applymap(lambda x: isinstance(x, str) and x.strip() == "")
-        row_missing_counts = na_mask.sum(axis=1)
-        incomplete_idx = row_missing_counts[row_missing_counts > 0].index.tolist()
+## Page config & CSS for header and logo
 
-        incomplete_rows = []
-        for i in incomplete_idx:
-            missing_cols = list(df.columns[na_mask.loc[i]])
-            incomplete_rows.append({
-                "Row No.": int(i) + 1,
-                "Data Feed Unique ID": f"row_{i+1}",
-                "num_missing": int(row_missing_counts.loc[i]),
-                "missing_attributes": ", ".join(missing_cols)
-            })
-        incomplete_df = pd.DataFrame(incomplete_rows)
+st.set_page_config (page_title="Data Quality Tool", layout="wide")
 
-        attr_overview = pd.DataFrame({
-            "attribute": df.columns,
-            "missing_count": na_mask.sum(axis=0).astype(int).values
-        }).sort_values("missing_count", ascending=False).reset_index(drop=True)
-
-        total_cells = int(df.size) if df.size else 0
-        total_missing = int(na_mask.sum().sum()) if df.size else 0
-        stats = {
-            "rows": int(df.shape[0]),
-            "columns": int(df.shape[1]),
-            "total_cells": total_cells,
-            "total_missing": total_missing,
-            "percent_missing": round(100 * (total_missing / total_cells), 2) if total_cells else 0.0
-        }
-
-        # remediation bytes
-        buf = io.BytesIO()
-        try:
-            with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
-                incomplete_df.to_excel(writer, sheet_name="IncompleteRows", index=False)
-            remediation_bytes = buf.getvalue()
-        except Exception:
-            remediation_bytes = b""
-        return stats, incomplete_df, attr_overview, remediation_bytes
-
-    completeness_source = "stub"
-
-# Basic streamlit config & CSS
-st.set_page_config(page_title="Data Quality Assessment Tool", layout="wide")
-CSS = """
+CSS = 
+"""
 <style>
-html, body, .reportview-container .main {
-  background-color: #000000;
-  color: #FFFFFF;
-  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+html, body, .reportview-container .main 
+{
+  backgroundColor: #000000;
+  primaryColor: #FFD500;
+  textColor: #000000
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
 }
-.banner { background:#FFD400; border-radius:8px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; }
-.sidebar-nav .stButton>button { background: #FFD400; color:#000; font-weight:700; width:100%; padding:12px 14px; border-radius:8px; text-align:left; margin-bottom:8px; }
-.sidebar-nav .stButton.home>button { background:#333333 !important; color:#fff !important; }
-.stButton>button, .stDownloadButton>button { border-radius:8px; }
+
+.banner 
+{
+ background:#FFD500;
+ border-radius:8px;
+ padding:10px 14px; 
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+}
+.stButton>button, .stDownloadButton>button 
+{
+ background: #FFD400 !important;
+ color: #000 !important;
+ font-weight: 700;
+ border-radius: 8px;
+} 
 .upload-strip { background:#fff; color:#000; padding:10px; border-radius:8px; }
 .small-grey { color:#bfbfbf; font-size:13px; }
 .card { background:#0a0a0a; border:1px solid #222; padding:12px; border-radius:8px; }
@@ -107,18 +75,6 @@ def parse_workbook(uploaded_file) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
     except Exception as e:
         st.error(f"Error reading Excel file: {e}")
         return {}, []
-
-def group_workstreams(sheet_names: List[str]) -> Dict[str, List[str]]:
-    groups = {}
-    for sn in sheet_names:
-        m = re.match(r"^(\d+)[\-_ ]*(.*)$", sn)
-        if m:
-            key = m.group(1)
-        else:
-            key = sn.split()[0] if sn.strip() else "misc"
-        groups.setdefault(key, []).append(sn)
-    return groups
-
 def generate_error_report_from_incomplete(df: pd.DataFrame, incomplete_df: pd.DataFrame, selected_columns: List[str]) -> pd.DataFrame:
     rows = []
     rowno_col = None
@@ -146,16 +102,16 @@ def generate_error_report_from_incomplete(df: pd.DataFrame, incomplete_df: pd.Da
                     if selected_columns and attr not in selected_columns:
                         continue
                     rowd = src.to_dict()
-                    rowd["Error Type"] = "Missing Value"
-                    rowd["Error Value"] = attr
+                    rowd["Error Type"] = "Completeness Check"
+                    rowd["Error Message"] = f"Data Entry missing for column - {attr}"
                     rows.append(rowd)
             else:
                 for col in selected_columns:
                     val = src.get(col, None)
                     if pd.isna(val) or (isinstance(val, str) and val.strip() == ""):
                         rowd = src.to_dict()
-                        rowd["Error Type"] = "Missing Value"
-                        rowd["Error Value"] = col
+                        rowd["Error Type"] = "Completeness Check"
+                        rowd["Error Message"] = f"Data Entry missing for column - {attr}"
                         rows.append(rowd)
     else:
         for idx, src in df.iterrows():
@@ -163,15 +119,15 @@ def generate_error_report_from_incomplete(df: pd.DataFrame, incomplete_df: pd.Da
                 val = src.get(col, None)
                 if pd.isna(val) or (isinstance(val, str) and val.strip() == ""):
                     rowd = src.to_dict()
-                    rowd["Error Type"] = "Missing Value"
-                    rowd["Error Value"] = col
+                    rowd["Error Type"] = "Completeness Check"
+                    rowd["Error Value"] = f"Data Entry missing for column - {attr}"
                     rows.append(rowd)
 
     if not rows:
-        out_cols = list(df.columns) + ["Error Type", "Error Value"]
+        out_cols = list(df.columns) + ["Error Type", "Error Message"]
         return pd.DataFrame(columns=out_cols)
     out_df = pd.DataFrame(rows)
-    final_cols = list(df.columns) + ["Error Type", "Error Value"]
+    final_cols = list(df.columns) + ["Error Type", "Error Message"]
     final_cols = [c for c in final_cols if c in out_df.columns]
     return out_df[final_cols].reset_index(drop=True)
 
@@ -181,7 +137,7 @@ def df_to_excel_bytes(d: pd.DataFrame) -> bytes:
         d.to_excel(writer, index=False, sheet_name="error_report")
     return buf.getvalue()
 
-# ---------- Normalizer & robust UI helpers (fix KeyError: 'attribute') ----------
+# ---------- Normalizer ----------
 def normalize_attr_overview(attr_df: pd.DataFrame, backing_df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Normalize incoming attr_overview into DataFrame with columns ['attribute','missing_count'].
@@ -271,58 +227,39 @@ def kpi_cards(stats: dict):
     col3.markdown(f"<div class='card'><div class='kpi'>Missing Cells</div><div>{stats.get('total_missing', 0)}</div></div>", unsafe_allow_html=True)
     col4.markdown(f"<div class='card'><div class='kpi'>% Missing</div><div>{stats.get('percent_missing', 0.0)}%</div></div>", unsafe_allow_html=True)
 
-# ---------- header & nav ----------
+# ---------- header ----------
+
 def ui_header():
-    colL, colC, colR = st.columns([1, 6, 1])
+    colLogo, colBanner = st.columns([1, 7])
     left_img = None
-    right_img = None
     try:
         with open("eyLogo.png", "rb") as f: left_img = f.read()
     except Exception:
         left_img = None
-    try:
-        with open("eyLogo2.png", "rb") as f: right_img = f.read()
-    except Exception:
-        right_img = None
 
-    with colL:
+    with colLogo:
         if left_img:
             st.image(left_img, width=80)
         else:
             st.markdown('<div style="background:#000;color:#FFD400;padding:8px;border-radius:6px;font-weight:900;text-align:center">EY</div>', unsafe_allow_html=True)
-    with colC:
+    with colBanner:
         st.markdown('<div class="banner"><div style="font-weight:800;font-size:20px;color:#000">Data Quality Assessment Tool</div>'
                     '<div style="font-size:13px;color:#222">Polished UI -- completeness source: <b>{}</b></div></div>'.format(completeness_source),
                     unsafe_allow_html=True)
-    with colR:
-        if right_img:
-            st.image(right_img, width=120)
         else:
-            st.markdown('<div style="color:#000;background:#FFD400;padding:6px 8px;border-radius:6px;font-weight:700;text-align:right">Integrity • Insight</div>', unsafe_allow_html=True)
-
-def left_nav_bar():
-    if "active_nav" not in st.session_state:
-        st.session_state.active_nav = "Home"
-    nav_items = ["Home", "Completeness", "Consistency", "Lineage", "Validation", "All Checks"]
-    st.markdown('<div class="sidebar-nav">', unsafe_allow_html=True)
-    for item in nav_items:
-        # each button updates session state
-        if st.button(item, key=f"nav_{item}"):
-            st.session_state.active_nav = item
-    st.markdown('</div>', unsafe_allow_html=True)
-    return st.session_state.active_nav
+            st.markdown('<div style="color:#000;background:#FFD500;padding:6px 8px;border-radius:6px;font-weight:700;text-align:right">Integrity • Insight</div>', unsafe_allow_html=True)
 
 # ---------- main page ----------
-ui_header()
-left_col, right_col = st.columns([1, 4])
 
-with left_col:
-    active = left_nav_bar()
+ui_header()
+
+right_col = st.container()
 
 with right_col:
-    if active == "Home":
-        tabs = st.tabs(["Upload", "Assessment Summary", "Custom Check", "Visualization", "Downloads"])
-        # UPLOAD
+      tabs = st.tabs(["DQT", "Remediation", "Data Visualisation",])
+
+        # Upload bar 
+
         with tabs[0]:
             st.markdown('<div class="upload-strip">', unsafe_allow_html=True)
             uploaded_file = st.file_uploader("Upload Excel workbook", type=["xlsx"], key="main_upload")
@@ -336,24 +273,16 @@ with right_col:
                 st.info("Upload an .xlsx workbook to begin (max ~200MB).")
 
             st.markdown("---")
-            st.write("Select sheets / workstreams to include in checks:")
-            c1, c2, c3 = st.columns([3, 3, 3])
+            st.write("Select sheets to include in checks:")
+            c1, c2 = st.columns([1:1])
             with c1:
-                st.subheader("Instructions")
-                st.markdown("<div class='small-grey'>Upload workbook. Select QC types in center column. Choose sheets on right.</div>", unsafe_allow_html=True)
-                st.markdown("- Upload, then Run Check Now to compute completeness.\n- Preview & download outputs below.")
-            with c2:
                 st.subheader("Quality Checks")
                 checks = st.multiselect("Choose checks", ["Completeness Check", "Consistency Check", "Lineage Check", "Validation Check"], default=["Completeness Check"], key="checks_select")
-            with c3:
-                st.subheader("Sheets / Workstreams")
+            with c2:
+                st.subheader("Sheets")
                 sheet_list = st.session_state.get("sheet_names", [])
                 sheets = st.multiselect("Select sheets", options=sheet_list, key="sheet_multiselect")
-                if sheet_list:
-                    groups = group_workstreams(sheet_list)
-                    st.write("Detected groups:", ", ".join(list(groups.keys())[:8]))
-
-            if st.button("Run Check Now"):
+            if st.button("Run Check"):
                 if not st.session_state.get("workbook_dict"):
                     st.error("Please upload workbook first.")
                 elif not sheets:
@@ -380,119 +309,22 @@ with right_col:
                             "error_report_params": None
                         }
                         progress.progress(int(100 * i / total))
-                    st.success("Checks complete. Scroll down for results.")
-
-        # ASSESSMENT SUMMARY
-        with tabs[1]:
-            st.header("Assessment Summary")
-            if not st.session_state.get("results"):
-                st.info("Run checks from the Upload tab to populate results.")
-            else:
-                for sheet, data in st.session_state["results"].items():
-                    st.subheader(f"Sheet: {sheet}")
-                    kpi_cards(data.get("stats", {}))
-                    # pass backing sheet df for robust normalization
-                    backing_df = st.session_state.get("workbook_dict", {}).get(sheet, None)
-                    show_attr_overview(data.get("attr_overview"), backing_df=backing_df)
-                    show_bar_chart(data.get("attr_overview"), backing_df=backing_df)
-
-        # CUSTOM CHECK
-        with tabs[2]:
-            st.header("Custom Check")
-            st.info("Placeholder -- paste custom check UI components here.")
-
-        # VISUALIZATION
-        with tabs[3]:
-            st.header("Visualization")
-            if st.session_state.get("results"):
-                first = next(iter(st.session_state["results"].values()))
-                backing_df = None
-                if first:
-                    # try to find a sheet to use as backing df
-                    keys = list(st.session_state["results"].keys())
-                    if keys:
-                        backing_df = st.session_state.get("workbook_dict", {}).get(keys[0], None)
-                    show_bar_chart(first.get("attr_overview"), backing_df=backing_df)
-                else:
-                    st.info("No data to visualize yet.")
-
-        # DOWNLOADS
-        with tabs[4]:
-            st.header("Downloads")
-            if not st.session_state.get("results"):
-                st.info("No outputs yet. Run checks to enable downloads.")
-            else:
-                for sheet, data in st.session_state["results"].items():
-                    st.write(f"**{sheet}**")
-                    if data["incomplete_df"] is not None and not data["incomplete_df"].empty:
-                        st.download_button(
-                            label="Download Rows with Incomplete Data (CSV)",
-                            data=data["incomplete_df"].to_csv(index=False).encode("utf-8"),
-                            file_name=f"{sheet}_IncompleteRows.csv",
-                            mime="text/csv"
-                        )
-                    if data["remediation_bytes"]:
-                        st.download_button(
-                            label="Download Remediation File (Excel)",
-                            data=data["remediation_bytes"],
-                            file_name=f"{sheet}_Remediation.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-
-    else:
-        # QC pages with nested tabs
-        nested = st.tabs(["Assessment Summary", "Error Report/Preview", "Visualization", "Online Editor", "Rerun Check"])
-
-        # Assessment Summary
-        with nested[0]:
-            st.header(f"{active} -- Assessment Summary")
-            sheet = st.selectbox("Select sheet", options=st.session_state.get("sheet_names", []), key=f"sheet_select_{active}")
-            if not sheet:
-                st.info("Select a sheet to view QC outputs.")
-            elif not st.session_state.get("results") or sheet not in st.session_state["results"]:
-                st.info("No results for this sheet yet. Run checks from Home or use Rerun Check.")
-            else:
-                data = st.session_state["results"][sheet]
-                kpi_cards(data.get("stats", {}))
-                backing_df = st.session_state.get("workbook_dict", {}).get(sheet, None)
-                show_attr_overview(data.get("attr_overview"), backing_df=backing_df)
-
-        # Error Report / Preview
-        with nested[1]:
-            st.header(f"{active} -- Error Report / Preview")
-            sheet = st.selectbox("Select sheet for error report", options=st.session_state.get("sheet_names", []), key=f"er_sheet_{active}")
-            if not sheet:
-                st.info("Select a sheet to generate error report.")
-            else:
-                if not st.session_state.get("results") or sheet not in st.session_state["results"]:
-                    st.info("No results for this sheet yet. Run checks from Home or use Rerun Check.")
-                else:
-                    data = st.session_state["results"][sheet]
-                    df = st.session_state["workbook_dict"][sheet]
-                    default_cols = [c for c in df.columns]
-                    chosen = st.multiselect("Columns to check", options=list(df.columns), default=default_cols, key=f"er_cols_{active}")
-                    er = generate_error_report_from_incomplete(df, data["incomplete_df"], chosen)
-                    total_rows = len(er)
-                    st.write(f"Error report rows (one per missing attribute): **{total_rows}**")
-                    if total_rows > 0:
-                        st.dataframe(er.head(200), use_container_width=True)
-                        st.download_button("Download error report", data=er.to_csv(index=False).encode("utf-8"), file_name=f"{sheet}_error_report.csv", mime="text/csv")
-                    else:
-                        st.info("No missing values found for selected columns.")
-
-        # Visualization
-        with nested[2]:
-            st.header(f"{active} -- Visualization")
-            sheet = st.selectbox("Select sheet", options=st.session_state.get("sheet_names", []), key=f"viz_sheet_{active}")
-            if sheet and st.session_state.get("results") and sheet in st.session_state["results"]:
-                show_bar_chart(st.session_state["results"][sheet]["attr_overview"], backing_df=st.session_state.get("workbook_dict", {}).get(sheet))
-            else:
-                st.info("Select a sheet with results to view visualizations.")
-
-        # Online Editor
-        with nested[3]:
-            st.header(f"{active} -- Online Editor")
-            st.write("Edit incomplete rows inline and download updated workbook.")
+                        st.success("Checks complete. Scroll down for summary")
+                    
+                        st.header("Summary")
+                        if not st.session_state.get("results"):
+                          st.info("Run checks from the Upload tab to populate results.")
+                        else:
+                          for sheet, data in st.session_state["results"].items():
+                        st.subheader(f"Sheet: {sheet}")
+                        kpi_cards(data.get("stats", {}))
+                        # pass backing sheet df for robust normalization
+                        backing_df = st.session_state.get("workbook_dict", {}).get(sheet, None)
+                        
+                        # Remediation 
+                        with tab[1]:
+                        st.header(f"{active} -- Data Remediation")
+                        st.write("Edit incomplete rows inline and download updated workbook.")
             sheet = st.selectbox("Select sheet to edit", options=st.session_state.get("sheet_names", []), key=f"editor_sheet_{active}")
             if not sheet:
                 st.info("Select a sheet to edit.")
@@ -536,22 +368,43 @@ with right_col:
                                 dff.to_excel(writer, index=False, sheet_name=sn[:31])
                         st.download_button("Download Updated Workbook (Excel)", data=buf.getvalue(), file_name=f"{sheet}_updated.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-        # Rerun Check
-        with nested[4]:
-            st.header(f"{active} -- Rerun Check")
-            sheet = st.selectbox("Select sheet to rerun", options=st.session_state.get("sheet_names", []), key=f"rerun_sheet_{active}")
-            if sheet:
-                if st.button("Rerun Completeness for this sheet", key=f"rerun_btn_{active}_{sheet}"):
-                    df = st.session_state["workbook_dict"][sheet]
-                    stats, incomplete_df, attr_overview, remediation_bytes = run_completeness_check(df)
-                    st.session_state["results"][sheet] = {
-                        "stats": stats,
-                        "incomplete_df": incomplete_df,
-                        "attr_overview": attr_overview,
-                        "remediation_bytes": remediation_bytes,
-                        "error_report": None,
-                        "error_report_params": None
-                    }
-                    st.success("Rerun complete.")
+                        
+                      # VISUALIZATION
+                      
+        with tabs[2]:
+            st.header("Visualization")
+            if st.session_state.get("results"):
+                first = next(iter(st.session_state["results"].values()))
+                backing_df = None
+                if first:
+                    # try to find a sheet to use as backing df
+                    keys = list(st.session_state["results"].keys())
+                    if keys:
+                        backing_df = st.session_state.get("workbook_dict", {}).get(keys[0], None)
+                    show_bar_chart(first.get("attr_overview"), backing_df=backing_df)
+                else:
+                    st.info("No data to visualize yet.")
 
-# End of uif.py
+       
+                    # Error Report / Preview
+
+            st.header(f"{active} -- Error Report / Preview")
+            sheet = st.selectbox("Select sheet for error report", options=st.session_state.get("sheet_names", []), key=f"er_sheet_{active}")
+            if not sheet:
+                st.info("Select a sheet to generate error report.")
+            else:
+                if not st.session_state.get("results") or sheet not in st.session_state["results"]:
+                    st.info("No results for this sheet yet. Run checks from Home or use Rerun Check.")
+                else:
+                    data = st.session_state["results"][sheet]
+                    df = st.session_state["workbook_dict"][sheet]
+                    default_cols = [c for c in df.columns]
+                    chosen = st.multiselect("Columns to check", options=list(df.columns), default=default_cols, key=f"er_cols_{active}")
+                    er = generate_error_report_from_incomplete(df, data["incomplete_df"], chosen)
+                    total_rows = len(er)
+                    st.write(f"Error report rows (one per missing attribute): **{total_rows}**")
+                    if total_rows > 0:
+                        st.dataframe(er.head(200), use_container_width=True)
+                        st.download_button("Download error report", data=er.to_csv(index=False).encode("utf-8"), file_name=f"{sheet}_error_report.csv", mime="text/csv")
+                    else:
+                        st.info("No missing values found for selected columns.")
